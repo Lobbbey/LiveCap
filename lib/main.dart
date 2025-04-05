@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:live_cap/routes/Routes.dart';
+import 'package:live_cap/screens/HomeScreen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -15,6 +16,7 @@ class MyApp extends StatelessWidget {
       title: 'Flutter Demo',
       theme: ThemeData(),
       routes:  Routes.getroutes,
+      home: Homescreen(),
     );
   }
 }
