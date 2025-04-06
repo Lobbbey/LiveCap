@@ -1,122 +1,157 @@
-import 'package:flutter/material.dart';
+// Import necessary Dart and Flutter libraries.
+import 'dart:async';                // For asynchronous programming and stream subscriptions.
+import 'dart:typed_data';           // To work with Uint8List, which represents binary audio data.
+import 'dart:convert';              // For encoding and decoding JSON messages.
 
+import 'package:flutter/material.dart';           // Flutter's material design UI library.
+import 'package:mic_stream/mic_stream.dart';        // Package to capture raw audio data from the microphone.
+import 'package:permission_handler/permission_handler.dart';  // Package to request runtime permissions.
+import 'package:web_socket_channel/io.dart';        // Package to connect to a WebSocket server.
+
+// Entry point of the Flutter application.
 void main() {
-  runApp(const MyApp());
+  runApp(MyAudioApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  // This widget is the root of your application.
+// Main app widget.
+class MyAudioApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      title: 'Real-time Transcription',
+      home: TranscriptionPage(),  // Home page of the app.
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
+// A stateful widget that manages the transcription UI and logic.
+class TranscriptionPage extends StatefulWidget {
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  _TranscriptionPageState createState() => _TranscriptionPageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+// The state class for TranscriptionPage.
+class _TranscriptionPageState extends State<TranscriptionPage> {
+  IOWebSocketChannel? _channel;                    // WebSocket channel for communicating with the Node.js server.
+  StreamSubscription<Uint8List>? _micSubscription;  // Subscription to the microphone's audio stream.
+  String _transcript = '';                          // Holds the transcript text received from the server.
+  bool _streaming = false;                          // Indicates whether streaming is currently active.
 
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+  @override
+  void initState() {
+    super.initState();
+    // Initialize microphone access and connect to the WebSocket server when the widget is created.
+    _initMicAndConnect();
+  }
+
+  // This function requests microphone permission and connects to the WebSocket server.
+  Future<void> _initMicAndConnect() async {
+    // Request the microphone permission.
+    final status = await Permission.microphone.request();
+    if (status != PermissionStatus.granted) {
+      throw 'Microphone permission not granted';
+    }
+    // Connect to the WebSocket server.
+    // Use "10.0.2.2" to access your host machine from the Android emulator.
+    _channel = IOWebSocketChannel.connect('ws://10.0.2.2:8080');
+
+    // Listen for incoming messages from the WebSocket server.
+    _channel!.stream.listen((message) {
+      // Decode the JSON message.
+      final data = jsonDecode(message);
+      // Update the transcript with the text received from the server.
+      setState(() {
+        _transcript = data['transcript'] ?? _transcript;
+      });
     });
   }
 
+  // Starts streaming the microphone audio to the WebSocket server.
+  Future<void> _startStreaming() async {
+    // Configure and start the microphone stream.
+    // These settings match your Node.js server and Google Speech configuration:
+    // - 48000 Hz sample rate.
+    // - Mono channel.
+    // - 16-bit PCM audio format.
+    final stream = await MicStream.microphone(
+      audioSource: AudioSource.DEFAULT,
+      sampleRate: 48000,
+      channelConfig: ChannelConfig.CHANNEL_IN_MONO,
+      audioFormat: AudioFormat.ENCODING_PCM_16BIT,
+    );
+
+    // Listen to the audio stream and send each audio chunk over the WebSocket.
+    _micSubscription = stream.listen((data) {
+      // "data" is a Uint8List containing raw PCM audio.
+      _channel?.sink.add(data);
+    });
+
+    // Update state to indicate that streaming has started.
+    setState(() {
+      _streaming = true;
+    });
+  }
+
+  // Stops streaming the microphone audio and closes the WebSocket connection.
+  void _stopStreaming() {
+    // Cancel the subscription to the microphone stream.
+    _micSubscription?.cancel();
+    // Close the WebSocket connection.
+    _channel?.sink.close();
+    // Update state to indicate that streaming has stopped.
+    setState(() {
+      _streaming = false;
+    });
+  }
+
+  // Dispose resources when the widget is removed from the widget tree.
+  @override
+  void dispose() {
+    _stopStreaming();  // Ensure streaming is stopped.
+    super.dispose();
+  }
+
+  // Builds the UI of the transcription page.
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+        title: Text('Real-time Transcription'),
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
+      body: Padding(
+        padding: const EdgeInsets.all(16),
         child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text('You have pushed the button this many times:'),
+          children: [
+            // Button to start transcription; disabled if already streaming.
+            ElevatedButton(
+              onPressed: _streaming ? null : _startStreaming,
+              child: Text('Start Transcription'),
+            ),
+            SizedBox(height: 16),
+            // Button to stop transcription; disabled if not streaming.
+            ElevatedButton(
+              onPressed: _streaming ? _stopStreaming : null,
+              child: Text('Stop Transcription'),
+            ),
+            SizedBox(height: 16),
+            // Label for the transcript.
             Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+              'Transcript:',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            SizedBox(height: 8),
+            // A scrollable area to display the transcript text.
+            Expanded(
+              child: SingleChildScrollView(
+                child: Text(
+                  _transcript,
+                  style: TextStyle(fontSize: 16),
+                ),
+              ),
             ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
 }
