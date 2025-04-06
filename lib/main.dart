@@ -38,87 +38,23 @@ class _TranscriptionPageState extends State<TranscriptionPage> {
   bool _streaming = false;                          // Indicates whether streaming is currently active.
 
   @override
-  void initState() {
-    super.initState();
-    // Initialize microphone access and connect to the WebSocket server when the widget is created.
-    _initMicAndConnect();
-  }
-
-  // This function requests microphone permission and connects to the WebSocket server.
-  Future<void> _initMicAndConnect() async {
-    // Request the microphone permission.
-    final status = await Permission.microphone.request();
-    if (status != PermissionStatus.granted) {
-      throw 'Microphone permission not granted';
-    }
-    // Connect to the WebSocket server.
-    // Use "10.0.2.2" to access your host machine from the Android emulator.
-    _channel = IOWebSocketChannel.connect('ws://10.0.2.2:8080');
-
-    // Listen for incoming messages from the WebSocket server.
-    _channel!.stream.listen(
-      (message) {
-        final data = jsonDecode(message);
-        setState(() {
-          _transcript = data['transcript'] ?? _transcript;
-      });
-      },
-      onError: (error) => print("WebSocket error: $error"),
-      onDone: () {
-        print("WebSocket closed");
-        setState(() => _streaming = false);
-      },
-    );
-  }
-
-  // Starts streaming the microphone audio to the WebSocket server.
-Future<void> _startStreaming() async {
-  print("🎙️ Starting microphone stream...");
-
-  final stream = await MicStream.microphone(
-    audioSource: AudioSource.DEFAULT,
-    sampleRate: 48000,
-    channelConfig: ChannelConfig.CHANNEL_IN_MONO,
-    audioFormat: AudioFormat.ENCODING_PCM_16BIT,
-  );
-
-  if (stream != null) {
-    print("✅ Microphone stream initialized.");
-    _micSubscription = stream.listen((data) {
-      print("📦 Mic data received: ${data.length} bytes");
-      _channel?.sink.add(data);
-      print("🚀 Sent audio chunk to WebSocket.");
-    });
-  } else {
-    print("❌ Mic stream is null!");
-  }
-
-  setState(() {
-    _streaming = true;
-  });
+  State<MyHomePage> createState() => _MyHomePageState();
 }
 
+class _MyHomePageState extends State<MyHomePage> {
+  int _counter = 0;
 
-  // Stops streaming the microphone audio and closes the WebSocket connection.
-  void _stopStreaming() {
-    // Cancel the subscription to the microphone stream.
-    _micSubscription?.cancel();
-    // Close the WebSocket connection.
-    _channel?.sink.close();
-    // Update state to indicate that streaming has stopped.
+  void _incrementCounter() {
     setState(() {
-      _streaming = false;
+      // This call to setState tells the Flutter framework that something has
+      // changed in this State, which causes it to rerun the build method below
+      // so that the display can reflect the updated values. If we changed
+      // _counter without calling setState(), then the build method would not be
+      // called again, and so nothing would appear to happen.
+      _counter++;
     });
   }
 
-  // Dispose resources when the widget is removed from the widget tree.
-  @override
-  void dispose() {
-    _stopStreaming();  // Ensure streaming is stopped.
-    super.dispose();
-  }
-
-  // Builds the UI of the transcription page.
   @override
   Widget build(BuildContext context) {
     return Scaffold(
