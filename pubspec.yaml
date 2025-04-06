@@ -14,11 +14,13 @@ dependencies:
   # For recording audio from the mic (supports recording and playback)
   flutter_sound: ^9.2.13
 
-  mic_stream: ^0.6.5
+  mic_stream:
+    path: ./mic_stream_fixed
+
 
   web_socket_channel: ^2.1.0
   # For handling runtime permissions (e.g., microphone)
-  permission_handler: ^10.2.0
+  permission_handler: 11.4.0
   # For making HTTP requests to your Node.js backend
   http: ^0.13.5
   # For getting file system paths (e.g., to save your recorded file)
