@@ -58,10 +58,11 @@ class _TranscriptionPageState extends State<TranscriptionPage> {
     // Listen for incoming messages from the WebSocket server.
     _channel!.stream.listen(
       (message) {
+        print("🧾 Received from server: $message");
         final data = jsonDecode(message);
         setState(() {
           _transcript = data['transcript'] ?? _transcript;
-      });
+        });
       },
       onError: (error) => print("WebSocket error: $error"),
       onDone: () {
@@ -72,30 +73,48 @@ class _TranscriptionPageState extends State<TranscriptionPage> {
   }
 
   // Starts streaming the microphone audio to the WebSocket server.
-  Future<void> _startStreaming() async {
-    // Configure and start the microphone stream.
-    // These settings match your Node.js server and Google Speech configuration:
-    // - 48000 Hz sample rate.
-    // - Mono channel.
-    // - 16-bit PCM audio format.
-    final stream = await MicStream.microphone(
+Future<void> _startStreaming() async {
+  if (_streaming) {
+    print("⚠️ Already streaming!");
+    return;
+  }
+
+  print("🎙️ Starting microphone stream...");
+
+  Stream<Uint8List>? stream;
+
+  try {
+    stream = await MicStream.microphone(
       audioSource: AudioSource.DEFAULT,
       sampleRate: 48000,
       channelConfig: ChannelConfig.CHANNEL_IN_MONO,
       audioFormat: AudioFormat.ENCODING_PCM_16BIT,
-    );
+    ).timeout(Duration(seconds: 3));
+    print("✅ Microphone stream initialized.");
+  } catch (e) {
+    print("⏰ MicStream.microphone() timed out or failed: $e");
+    return;
+  }
 
-    // Listen to the audio stream and send each audio chunk over the WebSocket.
-    if (stream != null) {
-      _micSubscription = stream.listen((data) {
-        _channel?.sink.add(data);
-      });
+  if (stream != null) {
+      _micSubscription = stream.listen(
+        (data) {
+          print("📦 Mic data received: ${data.length} bytes");
+          _channel?.sink.add(data);
+        },
+        onError: (error) {
+          print("❌ Mic stream error: $error");
+        },
+        onDone: () {
+          print("🛑 Mic stream closed.");
+        },
+        cancelOnError: true,
+      );
     } else {
-      print("Mic stream is null!");
+      print("❌ Mic stream returned null.");
+      return;
     }
-      // "data" is a Uint8List containing raw PCM audio.
 
-    // Update state to indicate that streaming has started.
     setState(() {
       _streaming = true;
     });
@@ -103,11 +122,9 @@ class _TranscriptionPageState extends State<TranscriptionPage> {
 
   // Stops streaming the microphone audio and closes the WebSocket connection.
   void _stopStreaming() {
-    // Cancel the subscription to the microphone stream.
+    print("🔴 Stopping stream");
     _micSubscription?.cancel();
-    // Close the WebSocket connection.
     _channel?.sink.close();
-    // Update state to indicate that streaming has stopped.
     setState(() {
       _streaming = false;
     });
@@ -133,7 +150,12 @@ class _TranscriptionPageState extends State<TranscriptionPage> {
           children: [
             // Button to start transcription; disabled if already streaming.
             ElevatedButton(
-              onPressed: _streaming ? null : _startStreaming,
+              onPressed: _streaming
+                  ? null
+                  : () {
+                      print("🟢 Start button pressed");
+                      _startStreaming();
+                    },
               child: Text('Start Transcription'),
             ),
             SizedBox(height: 16),

@@ -1,7 +1,6 @@
-
 import os
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "livecap-key.json"
-
+import wave
 import asyncio
 import websockets
 import json
@@ -25,29 +24,40 @@ streaming_config = speech.StreamingRecognitionConfig(
 
 # This handles a single WebSocket client
 async def handle_connection(websocket):
-    print("Client connected")
+    print("🔌 Client connected")
 
-    # Create an async generator for the microphone stream
+    # Open a WAV file in 'write binary' mode
+    wf = wave.open("captured_audio.wav", "wb")
+    wf.setnchannels(1)      # mono
+    wf.setsampwidth(2)      # 2 bytes = 16 bits
+    wf.setframerate(48000)  # 48 kHz
+
     async def request_generator():
         while True:
             try:
                 audio_chunk = await websocket.recv()
+                print(f"📥 Received chunk: {len(audio_chunk)} bytes, type: {type(audio_chunk)}")
+                # Ensure the chunk is bytes; if it's not, you might need to convert it
                 yield speech.StreamingRecognizeRequest(audio_content=audio_chunk)
+                await asyncio.sleep(0.1)  # Pacing: 100ms pause between chunks
             except websockets.exceptions.ConnectionClosed:
-                print("Client disconnected")
+                print("🔌 Client disconnected")
                 break
 
-    # Start streaming recognition
     try:
         responses = client.streaming_recognize(streaming_config, request_generator())
-
-        async for response in responses:
+        for response in responses:
+            print("📨 Raw response:", response)
             for result in response.results:
                 if result.alternatives:
                     transcript = result.alternatives[0].transcript
-                    await websocket.send(json.dumps({"transcript": transcript}))
+                    print("🗣️ Transcript:", transcript)
+                    await websocket.send(json.dumps({"transcript": transcript}))    
     except Exception as e:
-        print(f"Error in streaming: {e}")
+        print(f"❗ Error in streaming: {e} {repr(e)}")
+    finally:
+        wf.close()
+
 
 # Start WebSocket server
 async def main():
